@@ -1,0 +1,142 @@
+from pathlib import Path
+import os
+
+# Keep relative assets and generated files inside the project when launched
+# from a different working directory.
+PROJECT_ROOT = Path(__file__).resolve().parent
+os.chdir(PROJECT_ROOT)
+
+import plugins.monkey_patch  # noqa: F401
+import logging
+import logging.config
+import sys
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        stream.reconfigure(encoding="utf-8", errors="replace")
+from pyrogram import idle, __version__
+from pyrogram.raw.all import layer
+from pyrogram.types import BotCommand
+import time
+from pyrogram.errors import FloodWait
+import asyncio
+from datetime import date, datetime
+import pytz
+from aiohttp import web
+from database.ia_filterdb import Media, Media2
+from database.users_chats_db import db
+from info import MULTIPLE_DB, ON_HEROKU, LOG_STR, LOG_CHANNEL, PORT
+from utils import temp
+from Script import script
+from plugins import web_server, check_expired_premium, keep_alive
+from dreamxbotz.Bot import dreamxbotz
+from dreamxbotz.util.keepalive import ping_server
+from dreamxbotz.Bot.clients import initialize_clients
+from PIL import Image
+
+Image.MAX_IMAGE_PIXELS = 500_000_000
+
+logging.config.fileConfig('logging.conf')
+logging.getLogger().setLevel(logging.INFO)
+logging.getLogger("pyrogram").setLevel(logging.ERROR)
+logging.getLogger("imdbpy").setLevel(logging.ERROR)
+logging.getLogger("aiohttp").setLevel(logging.ERROR)
+logging.getLogger("aiohttp.web").setLevel(logging.ERROR)
+logging.getLogger("pymongo").setLevel(logging.WARNING)
+
+botStartTime = time.time()
+
+MAIN_BOT_COMMANDS = [
+    BotCommand("start", "Start the bot"),
+    BotCommand("id", "Get your Telegram ID"),
+    BotCommand("info", "Get user or media information"),
+    BotCommand("movies", "Browse latest movies"),
+    BotCommand("series", "Browse latest series"),
+    BotCommand("plan", "View premium plans"),
+    BotCommand("myplan", "View your active premium plan"),
+    BotCommand("redeem", "Redeem a premium code"),
+    BotCommand("font", "Generate styled text"),
+    BotCommand("alive", "Check bot status"),
+    BotCommand("ping", "Check bot response time"),
+    BotCommand("stickerid", "Get a sticker ID"),
+    BotCommand("telegraph", "Upload replied media to Telegraph"),
+]
+
+async def register_main_commands(client):
+    """Publish only the main user-facing commands in Telegram's menu."""
+    await client.set_bot_commands(MAIN_BOT_COMMANDS)
+
+def get_plugins_names(plugins_dir="plugins"):
+    plugins_path = Path(plugins_dir)
+    if not plugins_path.exists():
+        logging.warning("Plugins directory not found: %s", plugins_path)
+        return []
+
+    return [
+        ".".join(file.relative_to(plugins_path).with_suffix("").parts)
+        for file in sorted(plugins_path.rglob("*.py"))
+        if file.name != "__init__.py"
+    ]
+
+async def dreamxbotz_start():
+    logging.info('\n\nInitializing AkMovieVerse')
+    dreamxbotz.loop = asyncio.get_running_loop()
+    await dreamxbotz.start()
+    bot_info = await dreamxbotz.get_me()
+    dreamxbotz.username = bot_info.username
+    await register_main_commands(dreamxbotz)
+    await initialize_clients()
+    plugins_names = get_plugins_names()
+    if plugins_names:
+        plugins_list = "\n".join(f"  {i}. {name}" for i, name in enumerate(plugins_names, 1))
+        logging.info("Plugins Found (%d):\n%s", len(plugins_names), plugins_list)
+    else:
+        logging.warning("No plugins found.")
+
+    if ON_HEROKU:
+        asyncio.create_task(ping_server())
+    b_users, b_chats = await db.get_banned()
+    temp.BANNED_USERS = b_users
+    temp.BANNED_CHATS = b_chats
+    await Media.ensure_indexes()
+    if MULTIPLE_DB:
+        await Media2.ensure_indexes()
+        logging.info("Multiple Database Mode On. Now Files Will Be Save In Second DB If First DB Is Full")
+    else:
+        logging.info("Single DB Mode On ! Files Will Be Save In First Database")
+    
+    me = bot_info
+    temp.ME = me.id
+    temp.U_NAME = me.username
+    temp.B_NAME = me.first_name
+    temp.B_LINK = me.mention
+    dreamxbotz.username = '@' + me.username
+    asyncio.create_task(check_expired_premium(dreamxbotz))
+    
+    logging.info(f"{me.first_name} with Pyrogram v{__version__} (Layer {layer}) started on {me.username}.")
+    logging.info(LOG_STR)
+    logging.info(script.LOGO)
+    tz = pytz.timezone('Asia/Kolkata')
+    today = date.today()
+    now = datetime.now(tz)
+    current_time = now.strftime("%H:%M:%S %p")
+    await dreamxbotz.send_message(chat_id=LOG_CHANNEL, text=script.RESTART_TXT.format(temp.B_LINK, today, current_time))
+    app = web.AppRunner(await web_server())
+    await app.setup()
+    bind_address = "0.0.0.0"
+    await web.TCPSite(app, bind_address, PORT).start()
+    asyncio.create_task(keep_alive())
+
+    try:
+        await idle()
+    finally:
+        await app.cleanup()
+        await dreamxbotz.stop()
+
+if __name__ == '__main__':
+    try:
+        asyncio.run(dreamxbotz_start())
+    except FloodWait as e:
+        logging.info(f"FloodWait! Sleeping for {e.value} seconds.")
+        time.sleep(e.value)
+    except KeyboardInterrupt:
+        logging.info('Service stopped. Bye.')
