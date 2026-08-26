@@ -167,8 +167,9 @@ async def users_broadcast(user_id, message, is_pin):
         await db.delete_user(int(user_id))
         logging.info(f"{user_id} - PeerIdInvalid")
         return False, "Error"
-    except Exception:
-        return False, "Error"
+    except Exception as exc:
+        logging.exception("Broadcast failed for user %s", user_id)
+        return False, f"Error:{type(exc).__name__}"
 
 async def groups_broadcast(chat_id, message, is_pin):
     try:

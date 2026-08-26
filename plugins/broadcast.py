@@ -20,6 +20,7 @@ async def _run_user_broadcast(bot, message, is_pin, b_msg=None):
     total_users = len(users)
     status_msg = await message.reply_text("📤 <b>Broadcasting your message...</b>")
     success = blocked = deleted = failed = 0
+    last_error = None
     start_time = time.time()
     cancelled = False
 
@@ -31,29 +32,35 @@ async def _run_user_broadcast(bot, message, is_pin, b_msg=None):
             return result
         except asyncio.TimeoutError:
             logger.warning("Broadcast timed out for user %s", user["id"])
-            return "Error"
+            return "Error:Timeout"
         except Exception:
             logger.exception("Error sending broadcast to %s", user["id"])
-            return "Error"
+            return "Error:Unhandled"
 
     async with lock:
-        for i in range(0, total_users, 10):
+        for i in range(0, total_users, 5):
             if temp.B_USERS_CANCEL:
                 temp.B_USERS_CANCEL = False
                 cancelled = True
                 break
-            results = await asyncio.gather(*[send(user) for user in users[i:i + 10]])
+            results = await asyncio.gather(*[send(user) for user in users[i:i + 5]])
             for result in results:
                 if result == "Success": success += 1
                 elif result == "Blocked": blocked += 1
                 elif result == "Deleted": deleted += 1
-                elif result == "Error": failed += 1
+                elif result.startswith("Error"):
+                    failed += 1
+                    last_error = result.split(":", 1)[-1]
             done = i + len(results)
             await status_msg.edit(
                 f"📣 <b>Broadcast Progress:</b>\n\n👥 Total: <code>{total_users}</code>\n"
                 f"✅ Done: <code>{done}</code>\n📬 Success: <code>{success}</code>\n"
                 f"⛔ Blocked: <code>{blocked}</code>\n🗑️ Deleted: <code>{deleted}</code>"
             )
+            if done == 5 and last_error:
+                await message.reply_text(
+                    f"<b>Broadcast delivery error:</b> <code>{last_error}</code>"
+                )
             await asyncio.sleep(0.1)
     elapsed = get_readable_time(time.time() - start_time)
     await status_msg.edit(
