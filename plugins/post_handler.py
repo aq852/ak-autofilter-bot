@@ -21,7 +21,7 @@ post_sessions = {}
 DEFAULT_WATERMARK = "Join [AkMovieVerse](https://t.me/AkMovieVerse)"
 
 USE_GETFILE_BUTTON_BY_DEFAULT = True
-DEFAULT_WATERMARK = "Join [ᴅʀᴇᴀᴍxʙᴏᴛᴢ](https://t.me/dreamxbotz)"
+DEFAULT_WATERMARK = "Join [AkMovieVerse](https://t.me/AkMovieVerse)"
 LANGUAGES_FORMAT = "➥ <b>Languages :</b> <code>{langs}</code>"
 RESOLUTIONS_FORMAT = "\n➥ <b>Qualities :</b> <code>{resolutions}</code>"
 OTT_FORMAT = "\n➥ <b>Available on :</b> <code>{otts}</code>"
