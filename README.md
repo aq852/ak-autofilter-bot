@@ -138,6 +138,7 @@ Use these commands to return control to individual groups:
 /stats /users /chats       View bot statistics
 /maintenance               Toggle maintenance mode
 /delete /deleteall         Delete indexed records
+/clear_storage             Clear all media indexes (admin confirmation)
 /deletefiles               Delete matching files
 /add_premium               Add premium access
 /remove_premium            Remove premium access
