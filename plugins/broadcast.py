@@ -13,6 +13,62 @@ from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyb
 logger = logging.getLogger(__name__)
 lock = asyncio.Lock()
 
+async def _run_user_broadcast(bot, message, is_pin, b_msg=None):
+    """Send the replied message to all users after an inline confirmation."""
+    b_msg = b_msg or message.reply_to_message
+    users = [user async for user in await db.get_all_users()]
+    total_users = len(users)
+    status_msg = await message.reply_text("📤 <b>Broadcasting your message...</b>")
+    success = blocked = deleted = failed = 0
+    start_time = time.time()
+    cancelled = False
+
+    async def send(user):
+        try:
+            _, result = await users_broadcast(int(user["id"]), b_msg, is_pin)
+            return result
+        except Exception:
+            logger.exception("Error sending broadcast to %s", user["id"])
+            return "Error"
+
+    async with lock:
+        for i in range(0, total_users, 100):
+            if temp.B_USERS_CANCEL:
+                temp.B_USERS_CANCEL = False
+                cancelled = True
+                break
+            results = await asyncio.gather(*[send(user) for user in users[i:i + 100]])
+            for result in results:
+                if result == "Success": success += 1
+                elif result == "Blocked": blocked += 1
+                elif result == "Deleted": deleted += 1
+                elif result == "Error": failed += 1
+            done = i + len(results)
+            await status_msg.edit(
+                f"📣 <b>Broadcast Progress:</b>\n\n👥 Total: <code>{total_users}</code>\n"
+                f"✅ Done: <code>{done}</code>\n📬 Success: <code>{success}</code>\n"
+                f"⛔ Blocked: <code>{blocked}</code>\n🗑️ Deleted: <code>{deleted}</code>"
+            )
+            await asyncio.sleep(0.1)
+    elapsed = get_readable_time(time.time() - start_time)
+    await status_msg.edit(
+        f"{'❌ <b>Broadcast Cancelled.</b>' if cancelled else '✅ <b>Broadcast Completed.</b>'}\n\n"
+        f"⏱️ Time: {elapsed}\n👥 Total: <code>{total_users}</code>\n"
+        f"📬 Success: <code>{success}</code>\n⛔ Blocked: <code>{blocked}</code>\n"
+        f"🗑️ Deleted: <code>{deleted}</code>\n❌ Failed: <code>{failed}</code>"
+    )
+
+@Client.on_callback_query(filters.regex(r'^broadcast_pin#users#'))
+async def broadcast_pin_users(bot, query):
+    if query.from_user.id not in ADMINS:
+        return await query.answer("Only bot admins can do this.", show_alert=True)
+    _, target, command_id, reply_id, choice = query.data.split("#", 4)
+    await query.answer("Broadcast started")
+    await query.message.delete()
+    command = await bot.get_messages(query.message.chat.id, int(command_id))
+    b_msg = await bot.get_messages(query.message.chat.id, int(reply_id))
+    await _run_user_broadcast(bot, command, choice == "yes", b_msg)
+
 @Client.on_callback_query(filters.regex(r'^broadcast_cancel'))
 async def broadcast_cancel(bot, query):
     _, target = query.data.split("#", 1)
@@ -31,8 +87,12 @@ async def broadcast_users(bot, message):
         return await message.reply("⚠️ Another broadcast is in progress. Please wait...")
     ask = await message.reply(
         "<b>Do you want to pin this message in users?</b>",
-        reply_markup=ReplyKeyboardMarkup([["Yes", "No"]], one_time_keyboard=True, resize_keyboard=True)
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("Yes", callback_data=f"broadcast_pin#users#{message.id}#{message.reply_to_message.id}#yes"),
+            InlineKeyboardButton("No", callback_data=f"broadcast_pin#users#{message.id}#{message.reply_to_message.id}#no"),
+        ]])
     )
+    return
     try:
         dreamxbotz_user_response = await bot.listen(chat_id=message.chat.id, user_id=message.from_user.id, timeout=60)
     except asyncio.TimeoutError:
