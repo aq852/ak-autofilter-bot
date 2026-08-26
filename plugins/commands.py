@@ -647,6 +647,7 @@ async def clear_storage(bot, message):
         'Do you want to continue?',
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton('⚠️ Yes, continue', callback_data='autofilter_delete', style=enums.ButtonStyle.DANGER)],
+            [InlineKeyboardButton('🧹 Remove sample_mflix (~111 MB)', callback_data='drop_sample_mflix', style=enums.ButtonStyle.DANGER)],
             [InlineKeyboardButton('❌ Cancel', callback_data='close_data')],
         ]),
         quote=True,
