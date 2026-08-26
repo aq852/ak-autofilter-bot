@@ -143,9 +143,14 @@ async def is_check_admin(bot, chat_id, user_id):
     
 async def users_broadcast(user_id, message, is_pin):
     try:
-        m=await message.copy(chat_id=user_id)
+        m = await message.copy(chat_id=user_id)
         if is_pin:
-            await m.pin(both_sides=True)
+            try:
+                await m.pin()
+            except Exception as exc:
+                # Pinning can be unavailable in private chats; the broadcast
+                # itself succeeded, so do not mark the user as a failure.
+                logging.warning("Could not pin broadcast for %s: %s", user_id, exc)
         return True, "Success"
     except FloodWait as e:
         await asyncio.sleep(e.x)
