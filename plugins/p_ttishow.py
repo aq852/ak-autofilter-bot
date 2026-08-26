@@ -216,6 +216,35 @@ async def get_stats(bot, message):
     except Exception as e:
        logger.error("Error In stats: %s", e)        
 
+@Client.on_message(filters.command('storage_details') & filters.user(ADMINS))
+async def storage_details(bot, message):
+    """Show collection-level MongoDB usage without deleting any user data."""
+    status = await message.reply_text("<b>Reading MongoDB collection sizes...</b>")
+    try:
+        lines = ["<b>🗄 MongoDB storage details</b>"]
+        seen = set()
+        for label, mongo_client in (("Primary", client), ("Secondary", client2)):
+            if id(mongo_client) in seen:
+                continue
+            seen.add(id(mongo_client))
+            for db_name in await mongo_client.list_database_names():
+                if db_name in {"admin", "local", "config"}:
+                    continue
+                target_db = mongo_client[db_name]
+                for collection_name in await target_db.list_collection_names():
+                    try:
+                        stats = await target_db.command("collStats", collection_name)
+                        size = (stats.get("storageSize", 0) + stats.get("totalIndexSize", 0)) / (1024 * 1024)
+                        count = stats.get("count", 0)
+                        lines.append(f"<code>{label}/{db_name}/{collection_name}</code> — {size:.2f} MB ({count} docs)")
+                    except Exception:
+                        logger.debug("Unable to read stats for %s/%s", db_name, collection_name, exc_info=True)
+        await status.edit_text("\n".join(lines) if len(lines) > 1 else "<b>No application collections found.</b>")
+    except Exception as exc:
+        logger.exception("Storage details failed")
+        await status.edit_text(f"<b>Could not read storage details:</b> <code>{exc}</code>")
+
+
 @Client.on_message(filters.command('invite') & filters.user(ADMINS))
 async def gen_invite(bot, message):
     if len(message.command) == 1:

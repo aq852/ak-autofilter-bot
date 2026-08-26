@@ -139,6 +139,7 @@ Use these commands to return control to individual groups:
 /maintenance               Toggle maintenance mode
 /delete /deleteall         Delete indexed records
 /clear_storage             Clear all media indexes (admin confirmation)
+/storage_details           Show MongoDB collection-wise storage usage
 /deletefiles               Delete matching files
 /add_premium               Add premium access
 /remove_premium            Remove premium access
