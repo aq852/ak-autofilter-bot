@@ -3,7 +3,7 @@ from rapidfuzz import process
 from dreamxbotz.util.file_properties import get_name, get_hash
 from urllib.parse import quote_plus
 import logging
-from database.ia_filterdb import Media, Media2, db as media_db, db2 as media_db2, get_search_results, get_bad_files
+from database.ia_filterdb import Media, Media2, client, db as media_db, db2 as media_db2, get_search_results, get_bad_files
 from database.config_db import mdb
 from pyrogram.errors import MessageIdInvalid, UserIsBlocked, MessageNotModified, PeerIdInvalid
 from pyrogram import Client, filters, enums
@@ -896,7 +896,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         if query.from_user.id not in ADMINS:
             return await query.answer("Only bot admins can do this.", show_alert=True)
         if "sample_mflix" in await media_db.list_database_names():
-            await media_db.drop_database("sample_mflix")
+            await client.drop_database("sample_mflix")
             await query.answer("sample_mflix removed")
             await query.message.edit("<b>✅ MongoDB sample_mflix database removed.</b>")
         else:
