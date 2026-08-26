@@ -638,7 +638,22 @@ async def delete(bot, message):
                         await msg.edit('Fɪʟᴇ ɴᴏᴛ ғᴏᴜɴᴅ ɪɴ ᴅᴀᴛᴀʙᴀsᴇ ❌')
 
 
-@Client.on_message(filters.command(['deleteall', 'clear_storage']) & filters.user(ADMINS))
+@Client.on_message(filters.command('clear_storage') & filters.user(ADMINS))
+async def clear_storage(bot, message):
+    await message.reply_text(
+        '<b>⚠️ Clear media storage?</b>\n\n'
+        'This removes all indexed media files from the bot database. '
+        'Users, groups, plans and settings will remain safe.\n\n'
+        'Do you want to continue?',
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton('⚠️ Yes, continue', callback_data='autofilter_delete', style=enums.ButtonStyle.DANGER)],
+            [InlineKeyboardButton('❌ Cancel', callback_data='close_data')],
+        ]),
+        quote=True,
+    )
+
+
+@Client.on_message(filters.command('deleteall') & filters.user(ADMINS))
 async def delete_all_index(bot, message):
     await message.reply_text(
         'ᴛʜɪꜱ ᴡɪʟʟ ᴅᴇʟᴇᴛᴇ ᴀʟʟ ʏᴏᴜʀ ɪɴᴅᴇxᴇᴅ ꜰɪʟᴇꜱ !\nᴅᴏ ʏᴏᴜ ꜱᴛɪʟʟ ᴡᴀɴᴛ ᴛᴏ ᴄᴏɴᴛɪɴᴜᴇ ?',
