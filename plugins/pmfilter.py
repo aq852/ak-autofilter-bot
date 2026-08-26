@@ -882,13 +882,24 @@ async def cb_handler(client: Client, query: CallbackQuery):
     elif query.data.startswith("autofilter_delete"):
         if query.from_user.id not in ADMINS:
             return await query.answer("Only bot admins can do this.", show_alert=True)
-        # Remove the active collection and legacy names left by older deployments.
-        media_collection_names = {Media.collection.name, "files", "dreamcinezone_files", "Telegram_files"}
-        for collection_name in media_collection_names:
-            if collection_name in await media_db.list_collection_names():
-                await media_db[collection_name].drop()
-            if MULTIPLE_DB and collection_name in await media_db2.list_collection_names():
-                await media_db2[collection_name].drop()
+        # Hard-delete every media/file index collection, including legacy names.
+        explicit_media_names = {
+            Media.collection.name.lower(), "files", "telegram_files",
+            "dreamcinezone_files", "media", "media2",
+        }
+        def is_media_index(name):
+            lowered = name.lower()
+            return lowered in explicit_media_names or "file" in lowered or "media" in lowered
+
+        dropped = []
+        databases = [("Primary", media_db)]
+        if MULTIPLE_DB and media_db2 is not media_db:
+            databases.append(("Secondary", media_db2))
+        for label, target_db in databases:
+            for collection_name in await target_db.list_collection_names():
+                if is_media_index(collection_name):
+                    await target_db[collection_name].drop()
+                    dropped.append(f"{label}/{collection_name}")
         await query.answer("Eᴠᴇʀʏᴛʜɪɴɢ's Gᴏɴᴇ")
         await query.message.edit('ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ ᴀʟʟ ɪɴᴅᴇxᴇᴅ ꜰɪʟᴇꜱ ✅')
 
