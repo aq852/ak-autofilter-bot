@@ -113,10 +113,23 @@ async def extract_data_handler(client: Client, query: CallbackQuery):
 
         lib_path = os.path.abspath("MediaInfo.dll") if os.path.exists("MediaInfo.dll") else None
 
-        media_info = await asyncio.wait_for(
-            asyncio.to_thread(MediaInfo.parse, temp_path, library_file=lib_path),
-            timeout=6
-        )
+        try:
+            media_info = await asyncio.wait_for(
+                asyncio.to_thread(MediaInfo.parse, temp_path, library_file=lib_path),
+                timeout=6
+            )
+        except OSError:
+            logger.warning("MediaInfo system library is unavailable on this deployment.")
+            try:
+                await query.edit_message_reply_markup(reply_markup=current_markup)
+            except Exception:
+                pass
+            await query.message.reply_text(
+                "⚠️ Track extraction is unavailable on this server. "
+                "Deploy with the repository Dockerfile to enable it.",
+                quote=True,
+            )
+            return
 
         audio_tracks = []
         subtitle_tracks = []
