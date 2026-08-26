@@ -146,6 +146,39 @@ async def give_premium_cmd_handler(client, message):
 
 @Client.on_message(filters.command("premium_users") & filters.user(ADMINS))
 async def premium_user(client, message):
+    aa = await message.reply_text("<i>Fetching active premium users...</i>")
+    lines = ["<b>Premium users:</b>", ""]
+    user_count = 1
+    timezone = pytz.timezone("Asia/Kolkata")
+    current_time = datetime.datetime.now(timezone)
+    async for user in db.get_active_premium_users():
+        expiry = user.get("expiry_time")
+        if not expiry:
+            continue
+        if expiry.tzinfo is None:
+            expiry = pytz.utc.localize(expiry)
+        expiry_ist = expiry.astimezone(timezone)
+        remaining = expiry_ist - current_time
+        days = max(remaining.days, 0)
+        hours, remainder = divmod(max(remaining.seconds, 0), 3600)
+        minutes, _ = divmod(remainder, 60)
+        lines.append(
+            f"{user_count}. <code>{user.get('id')}</code>\n"
+            f"Expiry: <code>{expiry_ist.strftime('%d-%m-%Y %I:%M %p')}</code>\n"
+            f"Time left: <code>{days}d {hours}h {minutes}m</code>\n"
+        )
+        user_count += 1
+    if user_count == 1:
+        lines.append("No active premium users.")
+    new = "\n".join(lines)
+    try:
+        await aa.edit_text(new)
+    except MessageTooLong:
+        with open('usersplan.txt', 'w+', encoding='utf-8') as outfile:
+            outfile.write(new)
+        await message.reply_document('usersplan.txt', caption="Paid Users:")
+    return
+
     aa = await message.reply_text("<i>ꜰᴇᴛᴄʜɪɴɢ...</i>")
     new = " ᴘʀᴇᴍɪᴜᴍ ᴜꜱᴇʀꜱ ʟɪꜱᴛ :\n\n"
     user_count = 1

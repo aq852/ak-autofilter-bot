@@ -25,19 +25,24 @@ async def _run_user_broadcast(bot, message, is_pin, b_msg=None):
 
     async def send(user):
         try:
-            _, result = await users_broadcast(int(user["id"]), b_msg, is_pin)
+            _, result = await asyncio.wait_for(
+                users_broadcast(int(user["id"]), b_msg, is_pin), timeout=45
+            )
             return result
+        except asyncio.TimeoutError:
+            logger.warning("Broadcast timed out for user %s", user["id"])
+            return "Error"
         except Exception:
             logger.exception("Error sending broadcast to %s", user["id"])
             return "Error"
 
     async with lock:
-        for i in range(0, total_users, 100):
+        for i in range(0, total_users, 25):
             if temp.B_USERS_CANCEL:
                 temp.B_USERS_CANCEL = False
                 cancelled = True
                 break
-            results = await asyncio.gather(*[send(user) for user in users[i:i + 100]])
+            results = await asyncio.gather(*[send(user) for user in users[i:i + 25]])
             for result in results:
                 if result == "Success": success += 1
                 elif result == "Blocked": blocked += 1
