@@ -153,7 +153,11 @@ async def users_broadcast(user_id, message, is_pin):
                 logging.warning("Could not pin broadcast for %s: %s", user_id, exc)
         return True, "Success"
     except FloodWait as e:
-        await asyncio.sleep(e.x)
+        wait_time = getattr(e, "value", getattr(e, "x", 0))
+        if wait_time > 60:
+            logging.warning("FloodWait of %s seconds too long for user %s", wait_time, user_id)
+            return False, "Error:FloodWait"
+        await asyncio.sleep(wait_time)
         return await users_broadcast(user_id, message, is_pin)
     except InputUserDeactivated:
         await db.delete_user(int(user_id))
@@ -181,7 +185,11 @@ async def groups_broadcast(chat_id, message, is_pin):
                 pass
         return "Success"
     except FloodWait as e:
-        await asyncio.sleep(e.x)
+        wait_time = getattr(e, "value", getattr(e, "x", 0))
+        if wait_time > 60:
+            logging.warning("FloodWait of %s seconds too long for user %s", wait_time, user_id)
+            return False, "Error:FloodWait"
+        await asyncio.sleep(wait_time)
         return await groups_broadcast(chat_id, message, is_pin)
     except Exception:
         await db.delete_chat(chat_id)

@@ -4,6 +4,7 @@ import os
 import asyncio
 import logging
 from pyrogram import Client, filters, enums
+from pyrogram.errors import FloodWait, MessageNotModified
 from pyrogram.errors.exceptions.bad_request_400 import MessageTooLong
 from database.users_chats_db import db
 from info import ADMINS
@@ -18,57 +19,100 @@ async def _run_user_broadcast(bot, message, is_pin, b_msg=None):
     b_msg = b_msg or message.reply_to_message
     users = [user async for user in await db.get_all_users()]
     total_users = len(users)
-    status_msg = await message.reply_text("📤 <b>Broadcasting your message...</b>")
+    status_msg = await message.reply_text(
+        "📤 <b>Broadcasting your message...</b>",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("❌ CANCEL", callback_data="broadcast_cancel#users")
+        ]])
+    )
     success = blocked = deleted = failed = 0
-    last_error = None
     start_time = time.time()
+    last_edit_time = start_time
     cancelled = False
 
     async def send(user):
         try:
             _, result = await asyncio.wait_for(
-                users_broadcast(int(user["id"]), b_msg, is_pin), timeout=20
+                users_broadcast(int(user["id"]), b_msg, is_pin), timeout=60
             )
             return result
         except asyncio.TimeoutError:
             logger.warning("Broadcast timed out for user %s", user["id"])
             return "Error:Timeout"
-        except Exception:
-            logger.exception("Error sending broadcast to %s", user["id"])
-            return "Error:Unhandled"
+        except Exception as e:
+            logger.exception("Error sending broadcast to %s: %s", user["id"], e)
+            return f"Error:{type(e).__name__}"
 
     async with lock:
-        for i in range(0, total_users, 5):
-            if temp.B_USERS_CANCEL:
-                temp.B_USERS_CANCEL = False
-                cancelled = True
-                break
-            results = await asyncio.gather(*[send(user) for user in users[i:i + 5]])
-            for result in results:
-                if result == "Success": success += 1
-                elif result == "Blocked": blocked += 1
-                elif result == "Deleted": deleted += 1
-                elif result.startswith("Error"):
-                    failed += 1
-                    last_error = result.split(":", 1)[-1]
-            done = i + len(results)
-            await status_msg.edit(
-                f"📣 <b>Broadcast Progress:</b>\n\n👥 Total: <code>{total_users}</code>\n"
-                f"✅ Done: <code>{done}</code>\n📬 Success: <code>{success}</code>\n"
-                f"⛔ Blocked: <code>{blocked}</code>\n🗑️ Deleted: <code>{deleted}</code>"
-            )
-            if done == 5 and last_error:
-                await message.reply_text(
-                    f"<b>Broadcast delivery error:</b> <code>{last_error}</code>"
-                )
-            await asyncio.sleep(0.1)
+        try:
+            batch_size = 10
+            for i in range(0, total_users, batch_size):
+                if temp.B_USERS_CANCEL:
+                    temp.B_USERS_CANCEL = False
+                    cancelled = True
+                    break
+
+                batch = users[i:i + batch_size]
+                results = await asyncio.gather(*[send(user) for user in batch])
+
+                for result in results:
+                    if result == "Success":
+                        success += 1
+                    elif result == "Blocked":
+                        blocked += 1
+                    elif result == "Deleted":
+                        deleted += 1
+                    elif result.startswith("Error"):
+                        failed += 1
+
+                done = i + len(results)
+
+                # Throttle progress message edits to at most once every 3.5 seconds to avoid Telegram FloodWait
+                now = time.time()
+                if now - last_edit_time >= 3.5 or done >= total_users:
+                    elapsed = get_readable_time(now - start_time)
+                    try:
+                        await status_msg.edit(
+                            f"📣 <b>Broadcast Progress:</b>\n\n"
+                            f"👥 Total: <code>{total_users}</code>\n"
+                            f"✅ Done: <code>{done} / {total_users}</code>\n"
+                            f"📬 Success: <code>{success}</code>\n"
+                            f"⛔ Blocked: <code>{blocked}</code>\n"
+                            f"🗑️ Deleted: <code>{deleted}</code>\n"
+                            f"⚠️ Failed: <code>{failed}</code>\n"
+                            f"⏱️ Time: <code>{elapsed}</code>",
+                            reply_markup=InlineKeyboardMarkup([[
+                                InlineKeyboardButton("❌ CANCEL", callback_data="broadcast_cancel#users")
+                            ]])
+                        )
+                        last_edit_time = now
+                    except FloodWait as e:
+                        wait = getattr(e, "value", getattr(e, "x", 5))
+                        await asyncio.sleep(wait)
+                        last_edit_time = time.time()
+                    except (MessageNotModified, Exception) as exc:
+                        logger.debug("Progress message edit error: %s", exc)
+
+                await asyncio.sleep(0.3)
+        except Exception as e:
+            logger.exception("Broadcast loop error: %s", e)
+            await message.reply_text(f"❌ <b>Broadcast error:</b> <code>{e}</code>")
+
     elapsed = get_readable_time(time.time() - start_time)
-    await status_msg.edit(
+    final_text = (
         f"{'❌ <b>Broadcast Cancelled.</b>' if cancelled else '✅ <b>Broadcast Completed.</b>'}\n\n"
-        f"⏱️ Time: {elapsed}\n👥 Total: <code>{total_users}</code>\n"
-        f"📬 Success: <code>{success}</code>\n⛔ Blocked: <code>{blocked}</code>\n"
-        f"🗑️ Deleted: <code>{deleted}</code>\n❌ Failed: <code>{failed}</code>"
+        f"⏱️ Time: <code>{elapsed}</code>\n"
+        f"👥 Total: <code>{total_users}</code>\n"
+        f"📬 Success: <code>{success}</code>\n"
+        f"⛔ Blocked: <code>{blocked}</code>\n"
+        f"🗑️ Deleted: <code>{deleted}</code>\n"
+        f"❌ Failed: <code>{failed}</code>"
     )
+    try:
+        await status_msg.edit(final_text)
+    except Exception as e:
+        logger.exception("Final status edit error: %s", e)
+        await message.reply_text(final_text)
 
 @Client.on_callback_query(filters.regex(r'^broadcast_pin#users#'))
 async def broadcast_pin_users(bot, query):
