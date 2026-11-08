@@ -17,7 +17,27 @@ lock = asyncio.Lock()
 async def _run_user_broadcast(bot, message, is_pin, b_msg=None):
     """Send the replied message to all users after an inline confirmation."""
     b_msg = b_msg or message.reply_to_message
-    users = [user async for user in await db.get_all_users()]
+    raw_users = [user async for user in await db.get_all_users()]
+    users = []
+    for u in raw_users:
+        uid = None
+        if isinstance(u, dict):
+            for k in ("id", "user_id", "_id"):
+                val = u.get(k)
+                if val is not None:
+                    try:
+                        uid = int(val)
+                        break
+                    except (ValueError, TypeError):
+                        continue
+        elif isinstance(u, (int, str)):
+            try:
+                uid = int(u)
+            except (ValueError, TypeError):
+                pass
+        if uid:
+            users.append(uid)
+
     total_users = len(users)
     status_msg = await message.reply_text(
         "📤 <b>Broadcasting your message...</b>",
@@ -30,17 +50,17 @@ async def _run_user_broadcast(bot, message, is_pin, b_msg=None):
     last_edit_time = start_time
     cancelled = False
 
-    async def send(user):
+    async def send(uid):
         try:
             _, result = await asyncio.wait_for(
-                users_broadcast(int(user["id"]), b_msg, is_pin), timeout=60
+                users_broadcast(uid, b_msg, is_pin), timeout=60
             )
             return result
         except asyncio.TimeoutError:
-            logger.warning("Broadcast timed out for user %s", user["id"])
+            logger.warning("Broadcast timed out for user %s", uid)
             return "Error:Timeout"
         except Exception as e:
-            logger.exception("Error sending broadcast to %s: %s", user["id"], e)
+            logger.exception("Error sending broadcast to %s: %s", uid, e)
             return f"Error:{type(e).__name__}"
 
     async with lock:
@@ -306,7 +326,12 @@ async def remove_junkuser__db(bot, message):
     failed = 0
     done = 0
     async for user in users:
-        pti, sh = await clear_junk(int(user['id']), b_msg)
+        uid = (user.get('id') or user.get('user_id') or user.get('_id')) if isinstance(user, dict) else user
+        try:
+            uid = int(uid)
+        except (ValueError, TypeError):
+            continue
+        pti, sh = await clear_junk(uid, b_msg)
         if not pti:
             if sh == "Blocked":
                 blocked+=1
