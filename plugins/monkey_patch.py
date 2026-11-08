@@ -348,7 +348,7 @@ async def custom_copy(
             text=self.text,
             entities=self.entities,
             parse_mode=enums.ParseMode.DISABLED,
-            disable_web_page_preview=not self.web_page_preview,
+            disable_web_page_preview=not bool(getattr(self, "web_page", None) or getattr(self, "web_page_preview", None)),
             disable_notification=disable_notification,
             message_thread_id=message_thread_id,
             reply_to_message_id=reply_to_message_id,
@@ -467,15 +467,15 @@ async def custom_copy(
                 message_thread_id=message_thread_id,
                 allow_paid_broadcast=allow_paid_broadcast
             )
-        elif self.web_page_preview:
+        elif getattr(self, "web_page_preview", None) or getattr(self, "web_page", None):
             return await self._client.send_web_page(
                 chat_id,
-                url=self.web_page_preview.webpage.url,
+                url=getattr(getattr(getattr(self, "web_page_preview", None) or getattr(self, "web_page", None), "webpage", None), "url", getattr(getattr(self, "web_page_preview", None) or getattr(self, "web_page", None), "url", None)),
                 text=self.text,
                 entities=self.entities,
                 parse_mode=enums.ParseMode.DISABLED,
-                show_caption_above_media=getattr(self.web_page_preview, 'show_above_text', getattr(self.web_page_preview, 'invert_media', False)),
-                prefer_large_media=self.web_page_preview.force_large_media, # type: ignore
+                show_caption_above_media=getattr(getattr(self, "web_page_preview", None) or getattr(self, "web_page", None), 'show_above_text', getattr(getattr(self, "web_page_preview", None) or getattr(self, "web_page", None), 'invert_media', False)),
+                prefer_large_media=getattr(getattr(self, "web_page_preview", None) or getattr(self, "web_page", None), 'force_large_media', False),
                 disable_notification=disable_notification,
                 message_thread_id=message_thread_id,
                 reply_to_message_id=reply_to_message_id,
